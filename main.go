@@ -65,13 +65,12 @@ func main() {
 	var vid uint16 = 1452
 	var pid uint16 = 591
 
-	device, error := reader.FindDeviceByIDs(vid, pid)
-	if error != nil {
-		fmt.Printf("Device not found for: VID %04d, PID %04d\n", pid, vid)
-		return
+	deviceReader := reader.DeviceReader{
+		VID: vid,
+		PID: pid,
 	}
 
-	go reader.ReadFromDevice(device)
+	go deviceReader.Run()
 
 	for {
 	}

@@ -20,7 +20,9 @@ package reader
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
+	"time"
 
 	"github.com/holoplot/go-evdev"
 )
@@ -79,33 +81,79 @@ func FindDeviceByIDs(vid uint16, pid uint16) (*evdev.InputDevice, error) {
 	return nil, errors.New("notfound")
 }
 
-func ReadFromDevice(device *evdev.InputDevice) {
-	var error error
+type DeviceReader struct {
+	VID         uint16
+	PID         uint16
+	evdevDevice *evdev.InputDevice
+	grabbed     bool
+	buffer      string
+}
 
-	error = device.Grab()
-	if error != nil {
-		fmt.Printf("Error while grabbing device")
+func (deviceReader *DeviceReader) Reset() {
+	deviceReader.evdevDevice = nil
+	deviceReader.grabbed = false
+	deviceReader.buffer = ""
+}
+
+func (deviceReader *DeviceReader) Run() {
+	regex, err := regexp.Compile("^.*?\n$")
+	if err != nil {
+		// TODO
+		fmt.Printf("Error on regex")
 		return
 	}
 
 	for {
-		event, error := device.ReadOne()
-		if error != nil {
-			continue
+		if deviceReader.evdevDevice == nil {
+			evdevDevice, error := FindDeviceByIDs(deviceReader.VID, deviceReader.PID)
+			if error != nil {
+				fmt.Printf("Device not found for: VID %04d, PID %04d\n", deviceReader.VID, deviceReader.PID)
+				fmt.Printf("Trying again in %d seconds\n", 5)
+				time.Sleep(5 * time.Second)
+				continue
+			}
+
+			deviceReader.Reset()
+			deviceReader.evdevDevice = evdevDevice
+			fmt.Printf("Device found\n")
 		}
 
-		if event.Type != evdev.EV_KEY {
-			// Don't care about other events
-			continue
+		if !deviceReader.grabbed {
+			error := deviceReader.evdevDevice.Grab()
+			if error != nil {
+				deviceReader.Reset()
+
+				fmt.Printf("Error while grabbing device\n")
+				fmt.Printf("Trying again in %d seconds\n", 5)
+				time.Sleep(5 * time.Second)
+				continue
+			}
 		}
 
-		if event.Value != 1 {
-			// Not a keydown event
-			continue
+		for {
+			event, error := deviceReader.evdevDevice.ReadOne()
+			if error != nil {
+				// deviceReader.Reset() ???
+				break
+			}
+
+			if event.Type != evdev.EV_KEY {
+				// Don't care about other events
+				continue
+			}
+
+			if event.Value != 1 {
+				// Not a keydown event
+				continue
+			}
+
+			code := event.Code
+			deviceReader.buffer += CharMap[(uint16)(code)]
+
+			if regex.Match([]byte(deviceReader.buffer)) {
+				fmt.Printf("Read message: %s\n", deviceReader.buffer)
+				deviceReader.buffer = ""
+			}
 		}
-
-		code := event.Code
-
-		fmt.Printf("%s\n", CharMap[(uint16)(code)])
 	}
 }
