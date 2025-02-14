@@ -20,6 +20,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"sirafino/go-barcode-relay/reader"
 
 	"github.com/holoplot/go-evdev"
@@ -65,13 +66,24 @@ func main() {
 	var vid uint16 = 1452
 	var pid uint16 = 591
 
-	deviceReader := reader.DeviceReader{
-		VID: vid,
-		PID: pid,
+	regex, err := regexp.Compile("^.*?\n$")
+	if err != nil {
+		// TODO
+		fmt.Printf("Error on regex")
+		return
 	}
 
-	go deviceReader.Run()
+	deviceReader := reader.DeviceReader{
+		VID:   vid,
+		PID:   pid,
+		Regex: regex,
+	}
 
-	for {
+	scans := make(chan string)
+
+	go deviceReader.Run(scans, 1000)
+
+	for scan := range scans {
+		fmt.Printf("Read message: %s\n", scan)
 	}
 }

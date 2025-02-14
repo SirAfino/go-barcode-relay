@@ -84,6 +84,7 @@ func FindDeviceByIDs(vid uint16, pid uint16) (*evdev.InputDevice, error) {
 type DeviceReader struct {
 	VID         uint16
 	PID         uint16
+	Regex       *regexp.Regexp
 	evdevDevice *evdev.InputDevice
 	grabbed     bool
 	buffer      string
@@ -95,45 +96,39 @@ func (deviceReader *DeviceReader) Reset() {
 	deviceReader.buffer = ""
 }
 
-func (deviceReader *DeviceReader) Run() {
-	regex, err := regexp.Compile("^.*?\n$")
-	if err != nil {
-		// TODO
-		fmt.Printf("Error on regex")
-		return
-	}
-
+func (deviceReader *DeviceReader) Run(scans chan string, polling_ms int16) {
 	for {
 		if deviceReader.evdevDevice == nil {
 			evdevDevice, error := FindDeviceByIDs(deviceReader.VID, deviceReader.PID)
 			if error != nil {
-				fmt.Printf("Device not found for: VID %04d, PID %04d\n", deviceReader.VID, deviceReader.PID)
-				fmt.Printf("Trying again in %d seconds\n", 5)
-				time.Sleep(5 * time.Second)
+				time.Sleep(time.Duration(polling_ms) * time.Millisecond)
 				continue
 			}
 
+			fmt.Printf("Device connected\n")
 			deviceReader.Reset()
 			deviceReader.evdevDevice = evdevDevice
-			fmt.Printf("Device found\n")
 		}
 
 		if !deviceReader.grabbed {
 			error := deviceReader.evdevDevice.Grab()
 			if error != nil {
-				deviceReader.Reset()
-
 				fmt.Printf("Error while grabbing device\n")
-				fmt.Printf("Trying again in %d seconds\n", 5)
-				time.Sleep(5 * time.Second)
+				fmt.Printf("Trying again in %d ms\n", polling_ms)
+
+				deviceReader.Reset()
+				time.Sleep(time.Duration(polling_ms) * time.Millisecond)
 				continue
 			}
+
+			deviceReader.grabbed = true
 		}
 
 		for {
 			event, error := deviceReader.evdevDevice.ReadOne()
 			if error != nil {
-				// deviceReader.Reset() ???
+				fmt.Printf("Device disconnected\n")
+				deviceReader.Reset()
 				break
 			}
 
@@ -150,8 +145,8 @@ func (deviceReader *DeviceReader) Run() {
 			code := event.Code
 			deviceReader.buffer += CharMap[(uint16)(code)]
 
-			if regex.Match([]byte(deviceReader.buffer)) {
-				fmt.Printf("Read message: %s\n", deviceReader.buffer)
+			if deviceReader.Regex.Match([]byte(deviceReader.buffer)) {
+				scans <- deviceReader.buffer
 				deviceReader.buffer = ""
 			}
 		}
