@@ -24,9 +24,25 @@ import (
 	"sirafino/go-barcode-relay/reader"
 
 	"github.com/holoplot/go-evdev"
+	"gopkg.in/yaml.v3"
 )
 
+type DeviceConfiguration struct {
+	ID            string `yaml:"id"`
+	VID           uint16 `yaml:"vid"`
+	PID           uint16 `yaml:"pid"`
+	FullScanRegex string `yaml:"full_scan_regex"`
+}
+
+type Configuration struct {
+	ID      string                `yaml:"id"`
+	Devices []DeviceConfiguration `yaml:"devices"`
+}
+
 func main() {
+	// Whole app configuration
+	var config Configuration
+
 	fmt.Println("Barcode Relay (Go)")
 
 	// TODO: make this seriously
@@ -62,28 +78,49 @@ func main() {
 		return
 	}
 
-	// TODO: this is for testing only
-	var vid uint16 = 1452
-	var pid uint16 = 591
-
-	regex, err := regexp.Compile("^.*?\n$")
+	// Load configuration from a yaml file
+	yamlFile, err := os.ReadFile("config/config.yml")
 	if err != nil {
-		// TODO
-		fmt.Printf("Error on regex")
-		return
+		panic(err)
 	}
 
-	deviceReader := reader.DeviceReader{
-		VID:   vid,
-		PID:   pid,
-		Regex: regex,
+	err = yaml.Unmarshal(yamlFile, &config)
+	if err != nil {
+		panic(err)
 	}
 
-	scans := make(chan string)
+	// Keep a list of readers, one for each device to be read
+	readers := make([]*reader.DeviceReader, len(config.Devices))
 
-	go deviceReader.Run(scans, 1000)
+	// Instantiate each device reader based on the configuration
+	for idx, readerConfig := range config.Devices {
+		readers[idx] = nil
+
+		regex, err := regexp.Compile(readerConfig.FullScanRegex)
+		if err != nil {
+			// TODO
+			fmt.Printf("Error on regex")
+			continue
+		}
+
+		deviceReader := reader.DeviceReader{
+			VID:   readerConfig.VID,
+			PID:   readerConfig.PID,
+			Regex: regex,
+		}
+
+		readers[idx] = &deviceReader
+	}
+
+	// Create the scans channel
+	scans := make(chan reader.Scan)
+
+	// Start all readers
+	for _, reader := range readers {
+		go reader.Run(scans, 1000)
+	}
 
 	for scan := range scans {
-		fmt.Printf("Read message: %s\n", scan)
+		fmt.Printf("Read message: %s\n", scan.Content)
 	}
 }

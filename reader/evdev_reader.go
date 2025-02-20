@@ -96,7 +96,7 @@ func (deviceReader *DeviceReader) Reset() {
 	deviceReader.buffer = ""
 }
 
-func (deviceReader *DeviceReader) Run(scans chan string, polling_ms int16) {
+func (deviceReader *DeviceReader) Run(scans chan Scan, polling_ms int16) {
 	for {
 		if deviceReader.evdevDevice == nil {
 			evdevDevice, error := FindDeviceByIDs(deviceReader.VID, deviceReader.PID)
@@ -146,7 +146,13 @@ func (deviceReader *DeviceReader) Run(scans chan string, polling_ms int16) {
 			deviceReader.buffer += CharMap[(uint16)(code)]
 
 			if deviceReader.Regex.Match([]byte(deviceReader.buffer)) {
-				scans <- deviceReader.buffer
+				scan := Scan{
+					DeviceID:  "",
+					Content:   deviceReader.buffer,
+					Timestamp: time.Now().Unix(),
+				}
+
+				scans <- scan
 				deviceReader.buffer = ""
 			}
 		}
