@@ -1,0 +1,69 @@
+##
+#This file is part of the GoBarcodeRelay distribution (https://github.com/SirAfino/go-barcode-relay).
+#Copyright (c) 2025 Gabriele Serafino.
+##
+#This program is free software: you can redistribute it and/or modify
+#it under the terms of the GNU General Public License as published by
+#the Free Software Foundation, version 3.
+##
+#This program is distributed in the hope that it will be useful, but
+#WITHOUT ANY WARRANTY; without even the implied warranty of
+#MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+#General Public License for more details.
+##
+#You should have received a copy of the GNU General Public License
+#along with this program. If not, see <http://www.gnu.org/licenses/>.
+##
+
+# This relay id (sent for each request as the 'relay' field)
+id: relay01
+
+devices:
+    # This device id (sent for each request as the 'device' field)
+  - id: device01
+
+    # The regular expression used to match the USB device hardware id,
+    # check the readme on how to get your device hardware id. 
+    hwid_regex: 
+    
+    # The regular expression used to check when a full scan has been
+    # received and send it to the recipients
+    full_scan_regex: .*?\n
+
+target:
+  # The type of output target to send messages to
+  # Available types: redis_stream
+  type: redis_stream
+
+  host: 127.0.0.1
+  port: 6379
+  username: 
+  password: 
+  stream: 'scans'
+
+logging:
+  level: 'INFO'
+  filepath: 'config/app.log'
+
+  # Syslog logging configuration
+  syslog:
+    level: 'DEBUG'
+    
+    # Syslog server ip and port
+    server_host: 127.0.0.1
+    server_port: 514
+
+    # How to populate the host part of the messages
+    log_host: this_device
+
+hearthbeat:
+  # The type of hearthbeat target to send messages to
+  # Available types: redis_pubsub
+  type: redis_pubsub
+
+  host: 127.0.0.1
+  port: 6379
+  username: 
+  password: 
+  channel: 'hb'
+  interval: 10000 # 10 seconds
