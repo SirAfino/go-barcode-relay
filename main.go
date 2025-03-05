@@ -18,10 +18,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"regexp"
 	"sirafino/go-barcode-relay/reader"
+	"sirafino/go-barcode-relay/sender"
 
 	"github.com/holoplot/go-evdev"
 	"gopkg.in/yaml.v3"
@@ -34,14 +36,27 @@ type DeviceConfiguration struct {
 	FullScanRegex string `yaml:"full_scan_regex"`
 }
 
+type TargetConfiguration struct {
+	Type     string `yaml:"type"`
+	Host     string `yaml:"host"`
+	Port     int16  `yaml:"port"`
+	Username string `yaml:"username"`
+	Password string `yaml:"password"`
+	Stream   string `yaml:"stream"`
+}
+
 type Configuration struct {
 	ID      string                `yaml:"id"`
 	Devices []DeviceConfiguration `yaml:"devices"`
+	Target  TargetConfiguration   `yaml:"target"`
 }
 
 func main() {
 	// Whole app configuration
 	var config Configuration
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	fmt.Println("Barcode Relay (Go)")
 
@@ -104,12 +119,31 @@ func main() {
 		}
 
 		deviceReader := reader.DeviceReader{
-			VID:   readerConfig.VID,
-			PID:   readerConfig.PID,
-			Regex: regex,
+			DeviceID: readerConfig.ID,
+			VID:      readerConfig.VID,
+			PID:      readerConfig.PID,
+			Regex:    regex,
 		}
 
 		readers[idx] = &deviceReader
+	}
+
+	// Create sender
+	var s sender.Sender
+
+	switch config.Target.Type {
+	case "redis":
+		s = &sender.RedisStreamSender{
+			Host:     config.Target.Host,
+			Port:     config.Target.Port,
+			Username: config.Target.Username,
+			Password: config.Target.Password,
+			Stream:   config.Target.Stream,
+		}
+	case "dummy":
+		s = &sender.DummySender{}
+	default:
+		s = &sender.DummySender{}
 	}
 
 	// Create the scans channel
@@ -120,7 +154,6 @@ func main() {
 		go reader.Run(scans, 1000)
 	}
 
-	for scan := range scans {
-		fmt.Printf("Read message: %s\n", scan.Content)
-	}
+	// Start sender
+	s.Run(ctx, scans, config.ID)
 }

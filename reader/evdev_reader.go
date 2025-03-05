@@ -82,6 +82,7 @@ func FindDeviceByIDs(vid uint16, pid uint16) (*evdev.InputDevice, error) {
 }
 
 type DeviceReader struct {
+	DeviceID    string
 	VID         uint16
 	PID         uint16
 	Regex       *regexp.Regexp
@@ -147,7 +148,7 @@ func (deviceReader *DeviceReader) Run(scans chan Scan, polling_ms int16) {
 
 			if deviceReader.Regex.Match([]byte(deviceReader.buffer)) {
 				scan := Scan{
-					DeviceID:  "",
+					DeviceID:  deviceReader.DeviceID,
 					Content:   deviceReader.buffer,
 					Timestamp: time.Now().Unix(),
 				}

@@ -15,10 +15,13 @@
 // along with this program. If not, see <http://www.gnu.org/licenses/>.
 //
 
-package reader
+package sender
 
-type Scan struct {
-	DeviceID  string
-	Content   string
-	Timestamp int64
+import (
+	"context"
+	"sirafino/go-barcode-relay/reader"
+)
+
+type Sender interface {
+	Run(ctx context.Context, scans chan reader.Scan, relayID string)
 }
