@@ -21,13 +21,17 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/signal"
 	"regexp"
+	"sirafino/go-barcode-relay/logging"
 	"sirafino/go-barcode-relay/reader"
 	"sirafino/go-barcode-relay/sender"
 
 	"github.com/holoplot/go-evdev"
 	"gopkg.in/yaml.v3"
 )
+
+const VERSION string = "1.0.0"
 
 type DeviceConfiguration struct {
 	ID            string `yaml:"id"`
@@ -52,13 +56,23 @@ type Configuration struct {
 }
 
 func main() {
+	fmt.Println(
+		"BarcodeRelay (Go) Copyright (C) 2025  Gabriele Serafino",
+		"\nThis program comes with ABSOLUTELY NO WARRANTY.",
+		"\nThis is free software, and you are welcome to redistribute it",
+		"\nunder certain conditions.",
+	)
+	fmt.Println()
+
+	logger := logging.GetLogger("APP")
+
 	// Whole app configuration
 	var config Configuration
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	fmt.Println("Barcode Relay (Go)")
+	logger.Info("BarcodeRelay (Go) - v%s", VERSION)
 
 	// TODO: make this seriously
 	if len(os.Args) > 1 && os.Args[1] == "--list" {
@@ -96,13 +110,17 @@ func main() {
 	// Load configuration from a yaml file
 	yamlFile, err := os.ReadFile("config/config.yml")
 	if err != nil {
+		logger.Error("Error while reading configuration file")
 		panic(err)
 	}
 
 	err = yaml.Unmarshal(yamlFile, &config)
 	if err != nil {
+		logger.Error("Error while parsing configuration file")
 		panic(err)
 	}
+
+	logger.Info("Configuration file loaded (%d device/s, %d target/s)", len(config.Devices), 1)
 
 	// Keep a list of readers, one for each device to be read
 	readers := make([]*reader.DeviceReader, len(config.Devices))
@@ -113,9 +131,8 @@ func main() {
 
 		regex, err := regexp.Compile(readerConfig.FullScanRegex)
 		if err != nil {
-			// TODO
-			fmt.Printf("Error on regex")
-			continue
+			logger.Error("Invalid regex for device (%s)", readerConfig.ID)
+			panic(err)
 		}
 
 		deviceReader := reader.DeviceReader{
@@ -153,7 +170,17 @@ func main() {
 	for _, reader := range readers {
 		go reader.Run(scans, 1000)
 	}
+	logger.Info("Reader/s started")
 
 	// Start sender
-	s.Run(ctx, scans, config.ID)
+	go s.Run(ctx, scans, config.ID)
+	logger.Info("Sender/s started")
+
+	// Keep running until a SIGINT is received
+	// Setup a channel to receive a signal
+	done := make(chan os.Signal, 1)
+	signal.Notify(done, os.Interrupt)
+	for range done {
+		return
+	}
 }
