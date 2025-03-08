@@ -19,9 +19,10 @@ package reader
 
 import (
 	"errors"
-	"fmt"
 	"regexp"
+	"sirafino/go-barcode-relay/logging"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/holoplot/go-evdev"
@@ -89,6 +90,7 @@ type DeviceReader struct {
 	evdevDevice *evdev.InputDevice
 	grabbed     bool
 	buffer      string
+	logger      *logging.Logger
 }
 
 func (deviceReader *DeviceReader) Reset() {
@@ -98,6 +100,10 @@ func (deviceReader *DeviceReader) Reset() {
 }
 
 func (deviceReader *DeviceReader) Run(scans chan Scan, polling_ms int16) {
+	if deviceReader.logger == nil {
+		deviceReader.logger = logging.GetLogger("READER:" + deviceReader.DeviceID)
+	}
+
 	for {
 		if deviceReader.evdevDevice == nil {
 			evdevDevice, error := FindDeviceByIDs(deviceReader.VID, deviceReader.PID)
@@ -106,7 +112,7 @@ func (deviceReader *DeviceReader) Run(scans chan Scan, polling_ms int16) {
 				continue
 			}
 
-			fmt.Printf("Device connected\n")
+			deviceReader.logger.Info("Device connected\n")
 			deviceReader.Reset()
 			deviceReader.evdevDevice = evdevDevice
 		}
@@ -114,9 +120,7 @@ func (deviceReader *DeviceReader) Run(scans chan Scan, polling_ms int16) {
 		if !deviceReader.grabbed {
 			error := deviceReader.evdevDevice.Grab()
 			if error != nil {
-				fmt.Printf("Error while grabbing device\n")
-				fmt.Printf("Trying again in %d ms\n", polling_ms)
-
+				deviceReader.logger.Error("Error while grabbing device, trying again in %d ms\n", polling_ms)
 				deviceReader.Reset()
 				time.Sleep(time.Duration(polling_ms) * time.Millisecond)
 				continue
@@ -128,7 +132,7 @@ func (deviceReader *DeviceReader) Run(scans chan Scan, polling_ms int16) {
 		for {
 			event, error := deviceReader.evdevDevice.ReadOne()
 			if error != nil {
-				fmt.Printf("Device disconnected\n")
+				deviceReader.logger.Info("Device disconnected\n")
 				deviceReader.Reset()
 				break
 			}
@@ -152,6 +156,8 @@ func (deviceReader *DeviceReader) Run(scans chan Scan, polling_ms int16) {
 					Content:   deviceReader.buffer,
 					Timestamp: time.Now().Unix(),
 				}
+
+				deviceReader.logger.Info("Read scan (%s)", strings.ReplaceAll(scan.Content, "\n", ""))
 
 				scans <- scan
 				deviceReader.buffer = ""

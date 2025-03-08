@@ -20,6 +20,7 @@ package sender
 import (
 	"context"
 	"fmt"
+	"sirafino/go-barcode-relay/logging"
 	"sirafino/go-barcode-relay/reader"
 
 	"github.com/redis/go-redis/v9"
@@ -31,9 +32,14 @@ type RedisStreamSender struct {
 	Username string
 	Password string
 	Stream   string
+	logger   *logging.Logger
 }
 
 func (sender *RedisStreamSender) Run(ctx context.Context, scans chan reader.Scan, relayID string) {
+	if sender.logger == nil {
+		sender.logger = logging.GetLogger("SENDER")
+	}
+
 	client := redis.NewClient(&redis.Options{
 		Addr:     fmt.Sprintf("%s:%d", sender.Host, sender.Port),
 		Username: sender.Username,
@@ -43,7 +49,7 @@ func (sender *RedisStreamSender) Run(ctx context.Context, scans chan reader.Scan
 	})
 
 	for scan := range scans {
-		fmt.Printf("Sent message: %s\n", scan.Content)
+		sender.logger.Info("Sent message: %s\n", scan.Content)
 		client.XAdd(ctx, &redis.XAddArgs{
 			Stream: sender.Stream,
 			Values: map[string]interface{}{

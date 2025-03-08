@@ -19,15 +19,21 @@ package sender
 
 import (
 	"context"
-	"fmt"
+	"sirafino/go-barcode-relay/logging"
 	"sirafino/go-barcode-relay/reader"
+	"strings"
 )
 
+var logger *logging.Logger = logging.GetLogger("SENDER")
+
+// Basic dummy sender, used for testing purposes.
+//
+// Prints device scans to console.
 type DummySender struct {
 }
 
 func (sender *DummySender) Run(ctx context.Context, scans chan reader.Scan, relayID string) {
 	for scan := range scans {
-		fmt.Printf("Sent dummy message: %s\n", scan.Content)
+		logger.Info("Sent dummy message (%s)\n", strings.ReplaceAll(scan.Content, "\n", ""))
 	}
 }
