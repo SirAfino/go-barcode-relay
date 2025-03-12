@@ -18,7 +18,6 @@
 package sender
 
 import (
-	"context"
 	"sirafino/go-barcode-relay/reader"
 	"sync"
 )
@@ -26,5 +25,5 @@ import (
 type Sender interface {
 	// Start the sender thread. Keeps listening on the scans channel
 	// and forwards each scan with some context to the target.
-	Run(ctx context.Context, scans chan reader.Scan, relayID string, wg *sync.WaitGroup)
+	Run(scans chan reader.Scan, relayID string, wg *sync.WaitGroup)
 }

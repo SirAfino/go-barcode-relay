@@ -18,8 +18,6 @@
 package sender
 
 import (
-	"context"
-	"fmt"
 	"sirafino/go-barcode-relay/logging"
 	"sirafino/go-barcode-relay/reader"
 	"strings"
@@ -32,25 +30,27 @@ var logger *logging.Logger = logging.GetLogger("SENDER")
 //
 // Prints device scans to console.
 type DummySender struct {
+	logger *logging.Logger
 }
 
 func (sender *DummySender) Run(
-	ctx context.Context,
 	scans chan reader.Scan,
 	relayID string,
 	wg *sync.WaitGroup,
 ) {
 	defer wg.Done()
 
+	if sender.logger == nil {
+		sender.logger = logging.GetLogger("SENDER")
+	}
+
 	for {
-		select {
-		case scan := <-scans:
-			logger.Info("Sent dummy message (%s)\n", strings.ReplaceAll(scan.Content, "\n", ""))
-		case <-ctx.Done():
-			if len(scans) == 0 {
-				fmt.Printf("Exiting sender, because no event pending")
-				return
-			}
+		scan, ok := <-scans
+		if !ok {
+			sender.logger.Info("Stopping sender\n")
+			return
 		}
+
+		logger.Info("Sent dummy message (%s)\n", strings.ReplaceAll(scan.Content, "\n", ""))
 	}
 }

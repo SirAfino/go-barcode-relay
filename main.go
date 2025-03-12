@@ -151,7 +151,7 @@ func main() {
 
 	// Start sender
 	sendersWaitGroup.Add(1)
-	go s.Run(ctx, scans, config.ID, &sendersWaitGroup)
+	go s.Run(scans, config.ID, &sendersWaitGroup)
 	logger.Info("Sender/s started")
 
 	// Keep running until a SIGINT is received
@@ -164,8 +164,11 @@ func main() {
 
 		cancel()
 
-		sendersWaitGroup.Wait()
 		readersWaitGroup.Wait()
+
+		close(scans)
+
+		sendersWaitGroup.Wait()
 
 		return
 	}

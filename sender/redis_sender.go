@@ -38,12 +38,13 @@ type RedisStreamSender struct {
 }
 
 func (sender *RedisStreamSender) Run(
-	ctx context.Context,
 	scans chan reader.Scan,
 	relayID string,
 	wg *sync.WaitGroup,
 ) {
 	defer wg.Done()
+
+	ctx := context.Background()
 
 	if sender.logger == nil {
 		sender.logger = logging.GetLogger("SENDER")
@@ -58,23 +59,21 @@ func (sender *RedisStreamSender) Run(
 	})
 
 	for {
-		select {
-		case <-ctx.Done():
-			if len(scans) == 0 {
-				sender.logger.Info("Stopping sender\n")
-				return
-			}
-		case scan := <-scans:
-			sender.logger.Info("Sent message: (%s)\n", strings.ReplaceAll(scan.Content, "\n", ""))
-			client.XAdd(ctx, &redis.XAddArgs{
-				Stream: sender.Stream,
-				Values: map[string]any{
-					"relay":  relayID,
-					"device": scan.DeviceID,
-					"code":   scan.Content,
-					"ts":     scan.Timestamp,
-				},
-			})
+		scan, ok := <-scans
+		if !ok {
+			sender.logger.Info("Stopping sender\n")
+			return
 		}
+
+		client.XAdd(ctx, &redis.XAddArgs{
+			Stream: sender.Stream,
+			Values: map[string]any{
+				"relay":  relayID,
+				"device": scan.DeviceID,
+				"code":   scan.Content,
+				"ts":     scan.Timestamp,
+			},
+		})
+		sender.logger.Info("Sent message: (%s)\n", strings.ReplaceAll(scan.Content, "\n", ""))
 	}
 }
