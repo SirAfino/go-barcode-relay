@@ -23,37 +23,16 @@ import (
 	"os"
 	"os/signal"
 	"regexp"
+	"sirafino/go-barcode-relay/configuration"
 	"sirafino/go-barcode-relay/logging"
 	"sirafino/go-barcode-relay/reader"
 	"sirafino/go-barcode-relay/sender"
+	"sync"
 
 	"github.com/holoplot/go-evdev"
-	"gopkg.in/yaml.v3"
 )
 
 const VERSION string = "1.0.0"
-
-type DeviceConfiguration struct {
-	ID            string `yaml:"id"`
-	VID           uint16 `yaml:"vid"`
-	PID           uint16 `yaml:"pid"`
-	FullScanRegex string `yaml:"full_scan_regex"`
-}
-
-type TargetConfiguration struct {
-	Type     string `yaml:"type"`
-	Host     string `yaml:"host"`
-	Port     int16  `yaml:"port"`
-	Username string `yaml:"username"`
-	Password string `yaml:"password"`
-	Stream   string `yaml:"stream"`
-}
-
-type Configuration struct {
-	ID      string                `yaml:"id"`
-	Devices []DeviceConfiguration `yaml:"devices"`
-	Target  TargetConfiguration   `yaml:"target"`
-}
 
 func main() {
 	fmt.Println(
@@ -65,9 +44,6 @@ func main() {
 	fmt.Println()
 
 	logger := logging.GetLogger("APP")
-
-	// Whole app configuration
-	var config Configuration
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -107,19 +83,15 @@ func main() {
 		return
 	}
 
-	// Load configuration from a yaml file
-	yamlFile, err := os.ReadFile("config/config.yml")
+	// Whole app configuration
+	var config *configuration.Configuration
+	var err error
+
+	config, err = configuration.LoadConfiguration("config/config.yml")
 	if err != nil {
-		logger.Error("Error while reading configuration file")
+		logger.Error("Error while loading configuration file")
 		panic(err)
 	}
-
-	err = yaml.Unmarshal(yamlFile, &config)
-	if err != nil {
-		logger.Error("Error while parsing configuration file")
-		panic(err)
-	}
-
 	logger.Info("Configuration file loaded (%d device/s, %d target/s)", len(config.Devices), 1)
 
 	// Keep a list of readers, one for each device to be read
@@ -166,21 +138,35 @@ func main() {
 	// Create the scans channel
 	scans := make(chan reader.Scan)
 
+	// Create waitgroups for readers and senders
+	var readersWaitGroup sync.WaitGroup
+	var sendersWaitGroup sync.WaitGroup
+
 	// Start all readers
 	for _, reader := range readers {
-		go reader.Run(scans, 1000)
+		readersWaitGroup.Add(1)
+		go reader.Run(ctx, scans, 1000, &readersWaitGroup)
 	}
 	logger.Info("Reader/s started")
 
 	// Start sender
-	go s.Run(ctx, scans, config.ID)
+	sendersWaitGroup.Add(1)
+	go s.Run(ctx, scans, config.ID, &sendersWaitGroup)
 	logger.Info("Sender/s started")
 
 	// Keep running until a SIGINT is received
 	// Setup a channel to receive a signal
 	done := make(chan os.Signal, 1)
 	signal.Notify(done, os.Interrupt)
+
 	for range done {
+		logger.Info("Received SIGINT, waiting for routines to finish")
+
+		cancel()
+
+		sendersWaitGroup.Wait()
+		readersWaitGroup.Wait()
+
 		return
 	}
 }

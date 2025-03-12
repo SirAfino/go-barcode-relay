@@ -18,11 +18,14 @@
 package reader
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"regexp"
 	"sirafino/go-barcode-relay/logging"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/holoplot/go-evdev"
@@ -99,11 +102,33 @@ func (deviceReader *DeviceReader) Reset() {
 	deviceReader.buffer = ""
 }
 
-func (deviceReader *DeviceReader) Run(scans chan Scan, polling_ms int16) {
-	if deviceReader.logger == nil {
-		deviceReader.logger = logging.GetLogger("READER:" + deviceReader.DeviceID)
+func (deviceReader *DeviceReader) readCharacter() (*string, error) {
+	event, err := deviceReader.evdevDevice.ReadOne()
+
+	if err != nil {
+		deviceReader.logger.Info("Device disconnected\n")
+		deviceReader.Reset()
+		return nil, fmt.Errorf("disconnected")
 	}
 
+	if event.Type != evdev.EV_KEY {
+		// Don't care about other events
+		return nil, nil
+	}
+
+	if event.Value != 1 {
+		// Not a keydown event
+		return nil, nil
+	}
+
+	code := event.Code
+
+	character := CharMap[(uint16)(code)]
+
+	return &character, nil
+}
+
+func (deviceReader *DeviceReader) readCharacters(characters chan string, polling_ms int16) {
 	for {
 		if deviceReader.evdevDevice == nil {
 			evdevDevice, error := FindDeviceByIDs(deviceReader.VID, deviceReader.PID)
@@ -130,25 +155,41 @@ func (deviceReader *DeviceReader) Run(scans chan Scan, polling_ms int16) {
 		}
 
 		for {
-			event, error := deviceReader.evdevDevice.ReadOne()
-			if error != nil {
-				deviceReader.logger.Info("Device disconnected\n")
-				deviceReader.Reset()
+			character, err := deviceReader.readCharacter()
+			if err != nil {
 				break
 			}
 
-			if event.Type != evdev.EV_KEY {
-				// Don't care about other events
-				continue
+			if character != nil {
+				characters <- *character
 			}
+		}
+	}
+}
 
-			if event.Value != 1 {
-				// Not a keydown event
-				continue
-			}
+func (deviceReader *DeviceReader) Run(
+	ctx context.Context,
+	scans chan Scan,
+	polling_ms int16,
+	wg *sync.WaitGroup,
+) {
+	defer wg.Done()
 
-			code := event.Code
-			deviceReader.buffer += CharMap[(uint16)(code)]
+	if deviceReader.logger == nil {
+		deviceReader.logger = logging.GetLogger("READER:" + deviceReader.DeviceID)
+	}
+
+	characters := make(chan string, 1)
+
+	go deviceReader.readCharacters(characters, polling_ms)
+
+	for {
+		select {
+		case <-ctx.Done():
+			deviceReader.logger.Info("Stopping device reader: %s", deviceReader.DeviceID)
+			return
+		case character := <-characters:
+			deviceReader.buffer += character
 
 			if deviceReader.Regex.Match([]byte(deviceReader.buffer)) {
 				scan := Scan{

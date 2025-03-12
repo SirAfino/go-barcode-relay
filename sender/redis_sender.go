@@ -22,6 +22,8 @@ import (
 	"fmt"
 	"sirafino/go-barcode-relay/logging"
 	"sirafino/go-barcode-relay/reader"
+	"strings"
+	"sync"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -35,7 +37,14 @@ type RedisStreamSender struct {
 	logger   *logging.Logger
 }
 
-func (sender *RedisStreamSender) Run(ctx context.Context, scans chan reader.Scan, relayID string) {
+func (sender *RedisStreamSender) Run(
+	ctx context.Context,
+	scans chan reader.Scan,
+	relayID string,
+	wg *sync.WaitGroup,
+) {
+	defer wg.Done()
+
 	if sender.logger == nil {
 		sender.logger = logging.GetLogger("SENDER")
 	}
@@ -48,16 +57,24 @@ func (sender *RedisStreamSender) Run(ctx context.Context, scans chan reader.Scan
 		Protocol: 2, // Connection protocol
 	})
 
-	for scan := range scans {
-		sender.logger.Info("Sent message: %s\n", scan.Content)
-		client.XAdd(ctx, &redis.XAddArgs{
-			Stream: sender.Stream,
-			Values: map[string]interface{}{
-				"relay":  relayID,
-				"device": scan.DeviceID,
-				"code":   scan.Content,
-				"ts":     scan.Timestamp,
-			},
-		})
+	for {
+		select {
+		case <-ctx.Done():
+			if len(scans) == 0 {
+				sender.logger.Info("Stopping sender\n")
+				return
+			}
+		case scan := <-scans:
+			sender.logger.Info("Sent message: (%s)\n", strings.ReplaceAll(scan.Content, "\n", ""))
+			client.XAdd(ctx, &redis.XAddArgs{
+				Stream: sender.Stream,
+				Values: map[string]any{
+					"relay":  relayID,
+					"device": scan.DeviceID,
+					"code":   scan.Content,
+					"ts":     scan.Timestamp,
+				},
+			})
+		}
 	}
 }
