@@ -23,9 +23,10 @@ type TargetConfiguration struct {
 }
 
 type Configuration struct {
-	ID      string                `yaml:"id"`
-	Devices []DeviceConfiguration `yaml:"devices"`
-	Target  TargetConfiguration   `yaml:"target"`
+	ID         string                `yaml:"id"`
+	Devices    []DeviceConfiguration `yaml:"devices"`
+	Target     TargetConfiguration   `yaml:"target"`
+	Hearthbeat map[string]any        `yaml:"hearthbeat"`
 }
 
 func LoadConfiguration(path string) (*Configuration, error) {

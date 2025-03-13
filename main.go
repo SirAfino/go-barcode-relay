@@ -24,12 +24,14 @@ import (
 	"os/signal"
 	"regexp"
 	"sirafino/go-barcode-relay/configuration"
+	"sirafino/go-barcode-relay/hearthbeat"
 	"sirafino/go-barcode-relay/logging"
 	"sirafino/go-barcode-relay/reader"
 	"sirafino/go-barcode-relay/sender"
 	"sync"
 
 	"github.com/holoplot/go-evdev"
+	"gopkg.in/yaml.v3"
 )
 
 const VERSION string = "1.0.0"
@@ -153,6 +155,43 @@ func main() {
 	sendersWaitGroup.Add(1)
 	go s.Run(scans, config.ID, &sendersWaitGroup)
 	logger.Info("Sender/s started")
+
+	// If needed, instantiate hearthbeat routing
+	var hb hearthbeat.Hearthbeat
+	if config.Hearthbeat != nil {
+		hbConfigYaml, _ := yaml.Marshal(config.Hearthbeat)
+
+		var baseHBConfig hearthbeat.HearthbeatConfiguration
+		if yaml.Unmarshal(hbConfigYaml, &baseHBConfig) != nil {
+			logger.Error("Invalid hearthbeat configuration, skipping")
+		} else {
+			switch baseHBConfig.Type {
+			case "redis":
+				var HBConfig hearthbeat.RedisStreamHearthbeatConfiguration
+				if yaml.Unmarshal(hbConfigYaml, &HBConfig) != nil {
+					logger.Error("Invalid hearthbeat configuration, skipping")
+				} else {
+					hb = &hearthbeat.RedisStreamHearthbeat{
+						Host:     HBConfig.Host,
+						Port:     HBConfig.Port,
+						Username: HBConfig.Username,
+						Password: HBConfig.Password,
+						Stream:   HBConfig.Stream,
+
+						Interval: HBConfig.Interval,
+					}
+				}
+			default:
+				logger.Error("Invalid hearthbeat configuration, skipping")
+			}
+		}
+	} else {
+		logger.Info("No hearthbeat configured, skipping")
+	}
+
+	if hb != nil {
+		go hb.Run(ctx, config.ID)
+	}
 
 	// Keep running until a SIGINT is received
 	// Setup a channel to receive a signal
