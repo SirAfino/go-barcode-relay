@@ -24,6 +24,7 @@ import (
 	"sirafino/go-barcode-relay/reader"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -58,14 +59,21 @@ func (sender *RedisStreamSender) Run(
 		Protocol: 2, // Connection protocol
 	})
 
+	var scan *reader.Scan
+
 	for {
-		scan, ok := <-scans
-		if !ok {
-			sender.logger.Info("Stopping sender\n")
-			return
+		// If current scan is nil, read the next scan to send from the channel
+		if scan == nil {
+			s, ok := <-scans
+			if !ok {
+				sender.logger.Info("Stopping sender\n")
+				return
+			}
+
+			scan = &s
 		}
 
-		client.XAdd(ctx, &redis.XAddArgs{
+		cmd := client.XAdd(ctx, &redis.XAddArgs{
 			Stream: sender.Stream,
 			Values: map[string]any{
 				"relay":  relayID,
@@ -74,6 +82,21 @@ func (sender *RedisStreamSender) Run(
 				"ts":     scan.Timestamp,
 			},
 		})
-		sender.logger.Info("Sent message: (%s)\n", strings.ReplaceAll(scan.Content, "\n", ""))
+
+		err := cmd.Err()
+
+		if err != nil {
+			// DO NOT clear the scan, so that the next iteration will retry to send this scan
+
+			// Wait some time before retrying
+			time.Sleep(5000 * time.Millisecond) // TODO: this could be configurable
+
+			sender.logger.Error("Failed to send message: (%s, %s)\n", strings.ReplaceAll(scan.Content, "\n", ""), err)
+		} else {
+			sender.logger.Info("Sent message: (%s)\n", strings.ReplaceAll(scan.Content, "\n", ""))
+
+			// Clear scan, so that the next iteration will fetch a new scan from the channel
+			scan = nil
+		}
 	}
 }
