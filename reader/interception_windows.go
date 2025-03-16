@@ -17,7 +17,7 @@
 
 //go:build windows
 
-package windowsreader
+package reader
 
 import (
 	"bytes"
@@ -72,14 +72,14 @@ func DecodeUtf16(b []byte, order binary.ByteOrder) (string, error) {
 	return string(utf16.Decode(ints)), nil
 }
 
-type Device struct {
+type InterceptionDevice struct {
 	index  int
 	name   string
 	handle windows.Handle
 	event  windows.Handle
 }
 
-func NewDevice(index int) (*Device, error) {
+func NewDevice(index int) (*InterceptionDevice, error) {
 	name := fmt.Sprintf("%s%02d", interceptionDevice, index)
 	namePtr, err := windows.UTF16PtrFromString(name)
 	if err != nil {
@@ -104,7 +104,7 @@ func NewDevice(index int) (*Device, error) {
 		return nil, err
 	}
 
-	device := Device{
+	device := InterceptionDevice{
 		index:  index,
 		name:   name,
 		handle: handle,
@@ -114,7 +114,7 @@ func NewDevice(index int) (*Device, error) {
 	return &device, nil
 }
 
-func (device *Device) Init() error {
+func (device *InterceptionDevice) Init() error {
 	var buffer []byte = make([]byte, 128)
 	var bytesReturned uint32
 
@@ -137,7 +137,7 @@ func (device *Device) Init() error {
 	return nil
 }
 
-func (device *Device) GetHWID() (string, error) {
+func (device *InterceptionDevice) GetHWID() (string, error) {
 	var buffer [1024]byte
 
 	var bytesReturned uint32
@@ -164,7 +164,7 @@ func (device *Device) GetHWID() (string, error) {
 	return hwidStr, nil
 }
 
-func (device *Device) GetFilter() (*uint16, error) {
+func (device *InterceptionDevice) GetFilter() (*uint16, error) {
 	var buffer [1024]byte
 	var bytesReturned uint32
 
@@ -190,7 +190,7 @@ func (device *Device) GetFilter() (*uint16, error) {
 	return &filter, nil
 }
 
-func (device *Device) SetFilter(filter uint16) error {
+func (device *InterceptionDevice) SetFilter(filter uint16) error {
 	var buffer []byte = make([]byte, 2)
 	var bytesReturned uint32
 
@@ -213,12 +213,12 @@ func (device *Device) SetFilter(filter uint16) error {
 	return nil
 }
 
-func (device *Device) Wait(timeout uint32) (uint32, error) {
+func (device *InterceptionDevice) Wait(timeout uint32) (uint32, error) {
 	event, err := windows.WaitForSingleObject(device.event, timeout)
 	return event, err
 }
 
-func (device *Device) Receive() ([]byte, error) {
+func (device *InterceptionDevice) Receive() ([]byte, error) {
 	var buffer [1024]byte
 
 	var bytesReturned uint32
@@ -240,7 +240,7 @@ func (device *Device) Receive() ([]byte, error) {
 	return buffer[:bytesReturned], nil
 }
 
-func (device *Device) Close() error {
+func (device *InterceptionDevice) Close() error {
 	err := windows.CloseHandle(device.handle)
 	if err != nil {
 		return err
@@ -250,11 +250,11 @@ func (device *Device) Close() error {
 }
 
 type Interception struct {
-	devices []*Device
+	devices []*InterceptionDevice
 }
 
 var interception Interception = Interception{
-	devices: make([]*Device, maxDevices),
+	devices: make([]*InterceptionDevice, maxDevices),
 }
 
 func GetInterception() *Interception {
@@ -281,7 +281,7 @@ func (interception *Interception) Init() {
 	}
 }
 
-func (interception *Interception) FindDeviceByIDs(vid uint16, pid uint16) (*Device, error) {
+func (interception *Interception) FindDeviceByIDs(vid uint16, pid uint16) (*InterceptionDevice, error) {
 	vidStr := fmt.Sprintf("VID_%04X", vid)
 	pidStr := fmt.Sprintf("PID_%04X", pid)
 
@@ -301,7 +301,9 @@ func (interception *Interception) FindDeviceByIDs(vid uint16, pid uint16) (*Devi
 }
 
 // ListDevices retrieves a list of active input devices (keyboards/mice)
-func ListDevices() ([]int, error) {
+func ListDevices() ([]string, error) {
+	var results []string = make([]string, 0)
+
 	for i := range maxDevices {
 		if !isKeyboard(i) {
 			continue
@@ -317,8 +319,8 @@ func ListDevices() ([]int, error) {
 			continue
 		}
 
-		fmt.Println(hwid)
+		results = append(results, hwid)
 	}
 
-	return nil, nil
+	return results, nil
 }

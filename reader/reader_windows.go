@@ -17,7 +17,7 @@
 
 //go:build windows
 
-package windowsreader
+package reader
 
 import (
 	"context"
@@ -25,7 +25,6 @@ import (
 	"fmt"
 	"regexp"
 	"sirafino/go-barcode-relay/logging"
-	"sirafino/go-barcode-relay/reader"
 	"strings"
 	"sync"
 	"time"
@@ -38,7 +37,7 @@ type DeviceReader struct {
 	VID      uint16
 	PID      uint16
 	Regex    *regexp.Regexp
-	device   *Device
+	device   *InterceptionDevice
 	buffer   string
 	logger   *logging.Logger
 }
@@ -97,7 +96,7 @@ func (deviceReader *DeviceReader) readCharacters(characters chan string, polling
 			continue
 		}
 
-		character := reader.CharMap[(uint16)(code)]
+		character := CharMap[(uint16)(code)]
 
 		characters <- character
 
@@ -107,7 +106,7 @@ func (deviceReader *DeviceReader) readCharacters(characters chan string, polling
 
 func (deviceReader *DeviceReader) Run(
 	ctx context.Context,
-	scans chan reader.Scan,
+	scans chan Scan,
 	polling_ms int16,
 	wg *sync.WaitGroup,
 ) {
@@ -130,7 +129,7 @@ func (deviceReader *DeviceReader) Run(
 			deviceReader.buffer += character
 
 			if deviceReader.Regex.Match([]byte(deviceReader.buffer)) {
-				scan := reader.Scan{
+				scan := Scan{
 					DeviceID:  deviceReader.DeviceID,
 					Content:   deviceReader.buffer,
 					Timestamp: time.Now().Unix(),
