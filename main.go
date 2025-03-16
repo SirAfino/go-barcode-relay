@@ -30,7 +30,6 @@ import (
 	"sirafino/go-barcode-relay/sender"
 	"sync"
 
-	"github.com/holoplot/go-evdev"
 	"gopkg.in/yaml.v3"
 )
 
@@ -54,32 +53,16 @@ func main() {
 
 	// TODO: make this seriously
 	if len(os.Args) > 1 && os.Args[1] == "--list" {
-		devices, error := reader.ListAvailableDevices()
+		devices, error := reader.ListDevices()
 		if error != nil {
 			fmt.Println("Error while reading available devices")
 			return
 		}
 
-		for i, device := range devices {
-			name, error := device.Name()
-			if error != nil {
-				name = ""
-			}
+		logger.Info("Listing available devices:")
 
-			path := device.Path()
-
-			ids, error := device.InputID()
-			if error != nil {
-				// TODO:
-				continue
-			}
-
-			fmt.Printf("%d - %s - %s - VID %04d - PID %04d\n", i, name, path, ids.Vendor, ids.Product)
-
-			evtypes := device.CapableTypes()
-			for _, evtype := range evtypes {
-				fmt.Println(evdev.TypeName(evtype))
-			}
+		for _, device := range devices {
+			fmt.Printf("  - %s\n", device)
 		}
 
 		return
@@ -198,17 +181,14 @@ func main() {
 	done := make(chan os.Signal, 1)
 	signal.Notify(done, os.Interrupt)
 
-	for range done {
-		logger.Info("Received SIGINT, waiting for routines to finish")
+	<-done
+	logger.Info("Received SIGINT, waiting for routines to finish")
 
-		cancel()
+	cancel()
 
-		readersWaitGroup.Wait()
+	readersWaitGroup.Wait()
 
-		close(scans)
+	close(scans)
 
-		sendersWaitGroup.Wait()
-
-		return
-	}
+	sendersWaitGroup.Wait()
 }
