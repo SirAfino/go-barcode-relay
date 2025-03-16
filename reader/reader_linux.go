@@ -31,12 +31,13 @@ import (
 	"github.com/holoplot/go-evdev"
 )
 
-func ListAvailableDevices() ([]*evdev.InputDevice, error) {
+func ListDevices() ([]string, error) {
 	var devices []*evdev.InputDevice = make([]*evdev.InputDevice, 0)
+	var results []string = make([]string, 0)
 
 	paths, error := evdev.ListDevicePaths()
 	if error != nil {
-		return devices, error
+		return results, error
 	}
 
 	for _, path := range paths {
@@ -55,7 +56,27 @@ func ListAvailableDevices() ([]*evdev.InputDevice, error) {
 		devices = append(devices, device)
 	}
 
-	return devices, nil
+	for i, device := range devices {
+		name, error := device.Name()
+		if error != nil {
+			name = ""
+		}
+
+		path := device.Path()
+
+		ids, error := device.InputID()
+		if error != nil {
+			// TODO:
+			continue
+		}
+
+		results = append(
+			results,
+			fmt.Sprintf("%d - %s - %s - VID %04d - PID %04d\n", i, name, path, ids.Vendor, ids.Product),
+		)
+	}
+
+	return results, nil
 }
 
 func FindDeviceByIDs(vid uint16, pid uint16) (*evdev.InputDevice, error) {
