@@ -135,27 +135,33 @@ func (device *Device) Wait(timeout uint32) (uint32, error) {
 	return event, err
 }
 
-func (device *Device) Receive() (*KeyStroke, error) {
+func (device *Device) Receive() ([]*KeyStroke, error) {
 	err := device.deviceIoControl(interceptionIoctlReceive)
 	if err != nil {
 		return nil, fmt.Errorf("call to DeviceIoControl failed: %v", err)
 	}
 
-	if device.bytesReturned < 12 {
+	if device.bytesReturned < keystrokeByteSize {
 		return nil, fmt.Errorf("invalid read, not enough data")
 	}
 
-	// v1 := binary.LittleEndian.Uint16(device.outputBuffer[:2])
-	code := binary.LittleEndian.Uint16(device.outputBuffer[2:4])
-	state := binary.LittleEndian.Uint16(device.outputBuffer[4:6])
-	// v4 := binary.LittleEndian.Uint16(device.outputBuffer[6:8])
-	information := binary.LittleEndian.Uint32(device.outputBuffer[8:12])
+	strokes := make([]*KeyStroke, int(device.bytesReturned/keystrokeByteSize))
+	for i := range int(device.bytesReturned / keystrokeByteSize) {
+		buffer := device.outputBuffer[i*keystrokeByteSize : i*keystrokeByteSize+12]
+		// v1 := binary.LittleEndian.Uint16(buffer[:2])
+		code := binary.LittleEndian.Uint16(buffer[2:4])
+		state := binary.LittleEndian.Uint16(buffer[4:6])
+		// v4 := binary.LittleEndian.Uint16(buffer[6:8])
+		information := binary.LittleEndian.Uint32(buffer[8:12])
 
-	return &KeyStroke{
-		code,
-		state,
-		information,
-	}, nil
+		strokes[i] = &KeyStroke{
+			code,
+			state,
+			information,
+		}
+	}
+
+	return strokes, nil
 }
 
 func (device *Device) Close() error {

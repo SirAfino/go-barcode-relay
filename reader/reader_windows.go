@@ -21,7 +21,6 @@ package reader
 
 import (
 	"context"
-	"fmt"
 	"regexp"
 	"sirafino/go-barcode-relay/interception"
 	"sirafino/go-barcode-relay/logging"
@@ -127,21 +126,23 @@ func (deviceReader *DeviceReader) readCharacters(characters chan string, polling
 
 		// The "wait" call has returned after an event has been received, try to read next
 		// keystroke from device
-		keystroke, err := deviceReader.device.Receive()
+		keystrokes, err := deviceReader.device.Receive()
 		if err != nil {
-			fmt.Printf("Error while receiving from device: %s\n", err)
-			continue
+			deviceReader.logger.Error("Error while receiving from device: %s\n", err)
+			break
 		}
 
-		// Skip everything that is not a keydown event
-		if keystroke.State != interception.INTERCEPTION_KEY_DOWN {
-			continue
+		for _, keystroke := range keystrokes {
+			// Skip everything that is not a keydown event
+			if keystroke.State != interception.INTERCEPTION_KEY_DOWN {
+				continue
+			}
+
+			// Convert the keystroke code to a character using the CharMap
+			character := CharMap[(uint16)(keystroke.Code)]
+
+			characters <- character
 		}
-
-		// Convert the keystroke code to a character using the CharMap
-		character := CharMap[(uint16)(keystroke.Code)]
-
-		characters <- character
 	}
 }
 

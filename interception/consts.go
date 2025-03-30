@@ -26,6 +26,8 @@ const (
 	interceptionIoctlReceive   = 0x222100
 	interceptionIoctlGetHWID   = 0x222200
 
+	keystrokeByteSize = 12
+
 	MaxDevices   = 20 // The Interception driver supports up to 20 devices
 	MaxKeyboards = 10
 
